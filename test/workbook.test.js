@@ -150,3 +150,18 @@ test('filters leave addresses intact, sorting moves rows and adjusts relative fo
   history.undo();
   assert.equal(value('A2'),'Pera');
 });
+
+test('XY charts retain numeric X coordinates and omit blank X values',async()=>{
+  const {chartData,resolveChartData}=await import('../core/data-tools.js');
+  const {book,set,value}=setup();
+  set({A1:'Flujo',B1:'K',A2:'66.9173',B2:'59.9636',A3:'87.594',B3:'19.4421',B4:'12'});
+  const data=chartData({r0:0,r1:3,c0:0,c1:1},value,new Set(),'scatter');
+  assert.deepEqual(data.series[0].x,[66.9173,87.594,null]);
+  const sheet=book.get(book.active);
+  const imported=resolveChartData({kind:'scatter',data:{labels:[],series:[
+    {name:'K',values:[],source:"'Hoja 1'!$B$2:$B$4",categorySource:"'Hoja 1'!$A$2:$A$4",trend:'power'}
+  ]}},sheet,book,(_,a)=>value(a));
+  assert.deepEqual(imported.series[0].x,[66.9173,87.594,null]);
+  assert.deepEqual(imported.series[0].values,[59.9636,19.4421,12]);
+  assert.equal(imported.series[0].trend,'power');
+});

@@ -102,3 +102,51 @@ footer {flex:none;background:var(--surface);border-top:1px solid var(--line);pad
 .context-menu {display:grid;gap:2px;min-width:170px}
 .context-menu button {text-align:left}
 .context-menu button:hover {background:var(--selection)}
+
+/* Workbook chrome */
+:root {--chrome:#163239;--chrome-text:#eff9f5;--chrome-accent:#a4dfc5}
+.mast {height:44px;background:var(--chrome);color:var(--chrome-text);padding-inline:14px;border:0}
+.brand img {width:27px;height:27px;border-radius:7px}
+.brand span {font-size:16px}
+.brand small {display:none}
+.document {font-size:13px;font-weight:600;max-width:50vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#save-status {color:var(--chrome-accent);font-size:11px}
+#theme {min-height:28px;font-size:17px}
+#theme:hover {background:#ffffff24}
+.menu {height:35px;padding:0 10px;background:var(--paper)}
+.ribbon-tabs {display:flex;gap:3px;overflow:auto;scrollbar-width:none;flex:1}
+.ribbon-tabs button {min-height:34px;border-radius:0;border-bottom:2px solid transparent;padding:0 13px}
+.ribbon-tabs button[aria-pressed=true] {background:transparent;border-bottom-color:var(--accent);color:var(--accent);font-weight:700}
+#toggle {min-height:26px;padding:0 9px}
+.ribbon {padding:0 10px;min-height:79px;align-items:stretch}
+.ribbon-panel {display:flex;align-items:stretch;min-width:max-content;gap:0}
+.ribbon-group {display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:3px;padding:6px 9px 3px;border-right:1px solid var(--line);white-space:nowrap}
+.ribbon-group>div {display:flex;align-items:center;gap:2px;flex:1}
+.ribbon-group small {font-size:11px;color:var(--muted);line-height:14px}
+.ribbon-group button,.ribbon-group select {font-size:13px;min-height:27px;padding:0 7px}
+.ribbon-group select {background:var(--paper);border-color:var(--line)}
+.ribbon-group .tool-tile {display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-height:49px;min-width:63px;gap:1px}
+.tool-tile b {font-size:22px;font-weight:500;line-height:23px;color:var(--accent)}
+.tool-stack {display:flex;flex-direction:column}
+.tool-stack button {text-align:left;min-height:24px}
+.formula {min-height:32px}
+#active-cell {width:103px;border:0;border-right:1px solid var(--line);background:var(--surface);font-size:13px;border-radius:0}
+#fx-label {width:37px;font-size:17px}
+#fx {padding:5px 8px;font-size:14px;line-height:21px}
+.tabs {padding-inline:9px}
+.tabs button {min-height:33px}
+.status {min-height:24px;padding:1px 10px}
+.zoom-controls {display:flex;align-items:center;gap:3px}
+.zoom-controls button {min-height:21px;padding:0 5px;font-size:12px}
+.zoom-controls input {width:91px;accent-color:var(--accent)}
+#sheet-charts {position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.sheet-chart {position:absolute;display:flex;flex-direction:column;padding:9px 12px 4px;border:1px solid var(--line);background:var(--paper);box-shadow:0 2px 8px #13292321;overflow:hidden}
+.sheet-chart h3 {margin:0;text-align:center;font-size:clamp(12px,1.2vw,18px);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-chart .chart-content {display:flex;flex-direction:column;flex:1;min-height:0;border:0;padding:2px}
+.sheet-chart svg {flex:1;min-height:0}
+.sheet-chart .chart-legend {justify-content:center;font-size:11px;max-height:30px;overflow:hidden}
+@media(max-width:650px) {
+  .mast {padding-inline:8px}.document {display:block;max-width:39vw}.mast-actions {gap:3px}#save-status {display:none}
+  .ribbon-tabs button {padding:0 9px}.ribbon {min-height:72px;padding-inline:3px}.ribbon-group {padding-inline:6px}
+  #active-cell {width:82px}.tabs button {min-height:36px}.zoom-controls input {width:65px}
+}

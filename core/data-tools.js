@@ -63,7 +63,7 @@ export function findCells(sheet,query,value,useRaw) {
     .map(([a])=>({a,...coordinates(a)})).sort((a,b)=>a.r-b.r||a.c-b.c);
 }
 
-export function chartData(range,value,hidden=new Set()) {
+export function chartData(range,value,hidden=new Set(),kind) {
   const rows=[];
   for (let r=range.r0+1;r<=range.r1;r++) if (!hidden.has(r)) rows.push(r);
   const firstSeries=range.c0+Number(range.c1>range.c0);
@@ -76,6 +76,10 @@ export function chartData(range,value,hidden=new Set()) {
     });
     if (values.some(v=>v!==null)) series.push({name:String(value(address(range.r0,c)) ?? address(range.r0,c)),values});
   }
+  if (kind==='scatter') for (const item of series) item.x=rows.map(r=>{
+    const v=firstSeries===range.c0?r+1:value(address(r,range.c0));
+    return typeof v==='number'&&Number.isFinite(v)?v:null;
+  });
   return {labels,series};
 }
 
@@ -97,11 +101,11 @@ export function resolveChartData(chart,sheet,book,read) {
   const series=chart.data.series.map(s=>{
     const linked=values(s.source), categories=values(s.categorySource);
     return {name:String(values(s.nameSource)[0]??s.name),
-      values:linked.length?linked.map(v=>typeof v==='number'&&Number.isFinite(v)?v:null):s.values,categories};
+      values:linked.length?linked.map(v=>typeof v==='number'&&Number.isFinite(v)?v:null):s.values,categories,x:categories.length?categories.map(v=>v==null?null:Number(v)):s.x,trend:s.trend,connect:s.connect,labels:s.labels};
   });
   const length=Math.max(chart.data.labels.length,...series.map(s=>s.values.length));
   return {
     labels:Array.from({length},(_,i)=>String(series.find(s=>s.categories[i]!=null)?.categories[i]??chart.data.labels[i]??i+1)),
-    series:series.map(({name,values})=>({name,values:Array.from({length},(_,i)=>values[i]??null)}))
+    series:series.map(({name,values,x,trend,connect,labels})=>({name,...(chart.kind==='scatter'?{x,trend,connect,labels}:{}),values:Array.from({length},(_,i)=>values[i]??null)}))
   };
 }

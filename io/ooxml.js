@@ -1,4 +1,4 @@
-import {address} from '../core/grid-model.js';
+import {address,ROWS,COLS} from '../core/grid-model.js';
 
 const children=(node,name)=>Array.from(node?.children ?? []).filter(el=>el.localName===name);
 const child=(node,name)=>children(node,name)[0];
@@ -47,6 +47,7 @@ function stylesheet(read,path) {
   const doc=read(path), root=doc?.documentElement, color=colorResolver(read,doc);
   const fonts=children(child(root,'fonts'),'font');
   const fills=children(child(root,'fills'),'fill');
+  const borders=children(child(root,'borders'),'border');
   return children(child(root,'cellXfs'),'xf').map(xf=>{
     const fontId=id(xf,'fontId'),font=fonts[fontId];
     const pattern=child(fills[id(xf,'fillId')],'patternFill'), align=child(xf,'alignment');
@@ -65,6 +66,12 @@ function stylesheet(read,path) {
       const bg=color(child(pattern,'fgColor'));
       if (bg) style.bg=bg;
     }
+    const border=borders[id(xf,'borderId')], edges={};
+    for (const name of ['left','right','top','bottom']) {
+      const edge=child(border,name), type=str(edge,'style');
+      if (type&&type!=='none') edges[name]={style:type,color:color(child(edge,'color'))};
+    }
+    if (Object.keys(edges).length) style.borders=edges;
     const horizontal=str(align,'horizontal'),vertical=str(align,'vertical');
     if (['left','center','right'].includes(horizontal)) style.align=horizontal;
     if (['top','center','bottom'].includes(vertical)) style.vertical=vertical;
@@ -83,13 +90,13 @@ function chartPoints(root,numeric) {
   return data;
 }
 function chartData(doc) {
-  const items=['barChart','lineChart','pieChart','doughnutChart','areaChart'];
+  const items=['scatterChart','barChart','lineChart','pieChart','doughnutChart','areaChart'];
   const type=items.find(name=>descendants(doc,name).length);
   if (!type) return null;
   const root=descendants(doc,type)[0], series=[];
   let labels=[];
   for (const ser of children(root,'ser').slice(0,16)) {
-    const vals=child(ser,'val'),cats=child(ser,'cat'),tx=child(ser,'tx');
+    const vals=child(ser,'val')??child(ser,'yVal'),cats=child(ser,'cat')??child(ser,'xVal'),tx=child(ser,'tx');
     const values=chartPoints(vals,true);
     const source=descendants(vals,'f')[0]?.textContent;
     if (!values.length&&!source) continue;
@@ -97,16 +104,38 @@ function chartData(doc) {
     if (categories.length>labels.length) labels=categories;
     const name=descendants(tx,'v')[0]?.textContent || 'Serie '+(series.length+1);
     series.push({name,values,source,categorySource:descendants(cats,'f')[0]?.textContent,
-      nameSource:descendants(tx,'f')[0]?.textContent});
+      nameSource:descendants(tx,'f')[0]?.textContent,x:chartPoints(cats,true),
+      trend:str(child(child(ser,'trendline'),'trendlineType'),'val'),
+      connect:/line|smooth/i.test(str(child(root,'scatterStyle'),'val')),
+      labels:enabled(child(child(ser,'dLbls')??child(root,'dLbls'),'showVal'),'val')});
   }
   if (!series.length) return null;
   const length=Math.max(labels.length,...series.map(s=>s.values.length));
   return {
-    kind:type==='pieChart'||type==='doughnutChart'?'pie':type==='barChart'?'bar':'line',
+    axes:descendants(doc,'valAx').map(axis=>descendants(child(axis,'title'),'t').map(t=>t.textContent).join('')).slice(0,2),
+    kind:type==='scatterChart'?'scatter':type==='pieChart'||type==='doughnutChart'?'pie':type==='barChart'?'bar':'line',
     title:descendants(descendants(doc,'title')[0],'t').map(el=>el.textContent).join('')||'Gráfica de Excel',
     data:{labels:Array.from({length},(_,i)=>labels[i]??String(i+1)),series:series.map(s=>({...s,
       values:Array.from({length},(_,i)=>s.values[i]??null)}))}
   };
+}
+function chartAnchor(anchor) {
+  const pixels=value=>Number(value||0)/9525;
+  const number=(node,tag)=>Number(child(node,tag)?.textContent ?? 0);
+  function point(tag) {
+    const node=child(anchor,tag);
+    if (!node) return undefined;
+    const r=number(node,'row'),c=number(node,'col');
+    if (!Number.isInteger(r)||!Number.isInteger(c)||r<0||c<0||r>=ROWS||c>=COLS) return undefined;
+    return {r,c,dx:pixels(number(node,'colOff')),dy:pixels(number(node,'rowOff'))};
+  }
+  const from=point('from'),to=point('to'),extent=child(anchor,'ext'),position=child(anchor,'pos');
+  if (from&&to) return {from,to};
+  const w=pixels(str(extent,'cx')),h=pixels(str(extent,'cy'));
+  if (w>0&&h>0) {
+    if (from) return {from,w,h};
+    if (position) return {x:pixels(str(position,'x')),y:pixels(str(position,'y')),w,h};
+  }
 }
 export function readOOXML(files) {
   if (typeof DOMParser==='undefined'||!files?.['xl/workbook.xml']) return new Map();
@@ -129,9 +158,11 @@ export function readOOXML(files) {
       const drawingPath=lookupDrawing.get(attributeId(drawing));
       if (!drawingPath) continue;
       const drawingRels=relationships(read,drawingPath);
-      for (const chart of descendants(read(drawingPath),'chart')) {
+      for (const anchor of read(drawingPath)?.documentElement.children ?? []) {
+        const chart=descendants(anchor,'chart')[0];
+        if (!chart) continue;
         const item=chartData(read(drawingRels.get(attributeId(chart))));
-        if (item) charts.push(item);
+        if (item) charts.push({...item,anchor:chartAnchor(anchor)});
       }
     }
     result.set(str(tab,'name'),{styles,charts,hiddenRows,freeze});
@@ -162,11 +193,12 @@ export function styledXlsx(xlsx,out,sheets) {
     const index=parent.childElementCount;parent.append(value);
     parent.setAttribute('count',index+1);return index;
   }
-  const fonts=child(root,'fonts'),fills=child(root,'fills'),xfs=child(root,'cellXfs');
+  const fonts=child(root,'fonts'),fills=child(root,'fills'),borders=child(root,'borders'),xfs=child(root,'cellXfs');
+  const borderCache=new Map();
   const xfBase=children(xfs,'xf'), cache=new Map(),fontCache=new Map(),fillCache=new Map();
   function styleIndex(style,base) {
-    const {bold,italic,underline,strike,size,fg,bg,align,vertical,wrap}=style;
-    const key=JSON.stringify([base,bold,italic,underline,strike,size,fg,bg,align,vertical,wrap]);
+    const {bold,italic,underline,strike,size,fg,bg,align,vertical,wrap,borders:edges}=style;
+    const key=JSON.stringify([base,bold,italic,underline,strike,size,fg,bg,align,vertical,wrap,edges]);
     if (cache.has(key)) return cache.get(key);
     const xf=(xfBase[base]??xfBase[0]).cloneNode(true);
     if (bold||italic||underline||strike||size||rgb(fg??'')) {
@@ -189,6 +221,19 @@ export function styledXlsx(xlsx,out,sheets) {
       }
       xf.setAttribute('fillId',fillCache.get(bg));xf.setAttribute('applyFill','1');
     }
+    if (edges) {
+      const k=JSON.stringify(edges);
+      if (!borderCache.has(k)) {
+        const border=create(styles,'border');
+        for (const side of ['left','right','top','bottom','diagonal']) {
+          const edge=edges[side], node=create(styles,side,edge?{style:edge.style}:{});
+          if (edge?.color&&rgb(edge.color)) node.append(create(styles,'color',{rgb:'FF'+edge.color.slice(-6).toUpperCase()}));
+          border.append(node);
+        }
+        borderCache.set(k,add(borders,border));
+      }
+      xf.setAttribute('borderId',borderCache.get(k));xf.setAttribute('applyBorder','1');
+    }
     if (align||vertical||wrap) {
       const alignment=create(styles,'alignment');
       if (align) alignment.setAttribute('horizontal',align);
@@ -204,7 +249,7 @@ export function styledXlsx(xlsx,out,sheets) {
     for (const cell of descendants(doc,'c')) {
       const style=sheet.cells.get(str(cell,'r'))?.style;
       if (style&&(style.bold||style.italic||style.underline||style.strike||style.size||
-        style.fg||style.bg||style.align||style.vertical||style.wrap)) cell.setAttribute('s',styleIndex(style,id(cell,'s')));
+        style.fg||style.bg||style.align||style.vertical||style.wrap||style.borders)) cell.setAttribute('s',styleIndex(style,id(cell,'s')));
     }
     if (sheet.freeze?.row||sheet.freeze?.col) {
       const view=descendants(doc,'sheetView')[0];

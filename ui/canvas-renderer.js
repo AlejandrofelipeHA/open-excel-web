@@ -1,7 +1,7 @@
 import {ROWS,COLS,address,column,box,contains} from '../core/grid-model.js';
 
-const HEADER_X = 50, HEADER_Y = 30;
-export const BASE = {cols:110,rows:28};
+const HEADER_X = 37, HEADER_Y = 23;
+export const BASE = {cols:88,rows:23};
 export const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
 
 class Axis {
@@ -57,7 +57,8 @@ export function display(value, style={}) {
     try {return globalThis.XLSX?.SSF.format(style.excelFormat,value) ?? String(value);}
     catch {return String(value);}
   }
-  if (typeof value !== 'number' || !style.format) return String(value);
+  if (typeof value !== 'number') return String(value);
+  if (!style.format) return String(Number(value.toPrecision(12)));
   if (style.format === 'date') {
     const date = new Date((value-25569)*86400000);
     return Number.isNaN(date.getTime()) ? String(value) : dateFormat.format(date);
@@ -68,6 +69,7 @@ export function display(value, style={}) {
 export class CanvasRenderer {
   constructor(root, callbacks) {
     this.root=root;
+    this.zoom=1;
     this.scroll=root.querySelector('.scroll');
     this.space=root.querySelector('.space');
     this.canvas=root.querySelector('canvas');
@@ -105,16 +107,33 @@ export class CanvasRenderer {
     const size=(isRow?this.y:this.x).size(0);
     return this.sheet.freeze?.[axis] && size>0 && size+24<available ? size : 0;
   }
+  setZoom(zoom) {
+    const ratio=zoom/this.zoom, left=this.scroll.scrollLeft,top=this.scroll.scrollTop;
+    this.zoom=zoom;this.dimensions();
+    this.scroll.scrollTo(left*ratio,top*ratio);this.invalidate();
+  }
+  chartClip() {
+    return {x:HEADER_X+this.frozen('col'),y:HEADER_Y+this.frozen('row'),w:this.scroll.clientWidth,h:this.scroll.clientHeight};
+  }
+  chartRect(anchor) {
+    const pos=p=>({x:HEADER_X+this.x.offset(p.c)+p.dx*this.zoom-this.scroll.scrollLeft,
+      y:HEADER_Y+this.y.offset(p.r)+p.dy*this.zoom-this.scroll.scrollTop});
+    const first=anchor.from?pos(anchor.from):{x:HEADER_X+anchor.x*this.zoom-this.scroll.scrollLeft,y:HEADER_Y+anchor.y*this.zoom-this.scroll.scrollTop};
+    const last=anchor.to?pos(anchor.to):{x:first.x+anchor.w*this.zoom,y:first.y+anchor.h*this.zoom};
+    return {...first,w:last.x-first.x,h:last.y-first.y};
+  }
   dimensions() {
     const dimensions=axis=>{
       const stored=this.sheet[axis], g=this.gesture;
       if (g?.mode!=='resize' || g.axis!==axis || g.preview===undefined) return stored;
       return new Map(stored).set(g.index,g.preview);
     };
-    this.x.set(dimensions('cols'));
+    const scale=map=>new Map([...map].map(([i,size])=>[i,size*this.zoom]));
+    this.x.base=BASE.cols*this.zoom;this.y.base=BASE.rows*this.zoom;
+    this.x.set(scale(dimensions('cols')));
     const rows=new Map(dimensions('rows'));
     for (const row of this.hidden) rows.set(row,0);
-    this.y.set(rows);
+    this.y.set(scale(rows));
     this.space.style.width=(HEADER_X+this.x.offset(COLS))+'px';
     this.space.style.height=(HEADER_Y+this.y.offset(ROWS))+'px';
   }
@@ -204,10 +223,18 @@ export class CanvasRenderer {
       const value=this.callbacks.value(a), align=style.align ?? (typeof value==='number'?'right':'left');
       ctx.save();ctx.beginPath();ctx.rect(x+3,y+1,w-6,h-2);ctx.clip();
       ctx.fillStyle=style.fg||ink;
-      const fontSize=style.size||14;
+      const fontSize=(style.size||13)*this.zoom;
       ctx.font=(style.italic?'italic ':'')+(style.bold?'600 ':'')+fontSize+'px system-ui';
       ctx.textAlign=align;
-      const text=display(value,style), tx=align==='right'?x+w-8:align==='center'?x+w/2:x+8;
+      let text=display(value,style);
+      if (typeof value==='number'&&!style.wrap&&ctx.measureText(text).width>Math.max(0,w-14)) {
+        if (!style.format&&!style.excelFormat) {
+          for (let digits=9;digits>=2&&ctx.measureText(text).width>w-14;digits--) text=String(Number(value.toPrecision(digits)));
+          if (ctx.measureText(text).width>w-14) text=value.toExponential(2);
+        }
+        if (ctx.measureText(text).width>w-14) text='#'.repeat(Math.max(1,Math.floor((w-14)/ctx.measureText('#').width)));
+      }
+      const tx=align==='right'?x+w-8:align==='center'?x+w/2:x+8;
       const ty=style.vertical==='top'?y+fontSize/2+2:style.vertical==='bottom'?y+h-fontSize/2-2:y+h/2;
       if (style.wrap) {
         const lines=[];
@@ -231,7 +258,23 @@ export class CanvasRenderer {
       }
       ctx.restore();
     };
-    const primary=ranges.at(-1);
+    function border(edge,x1,y1,x2,y2) {
+      const kind=edge.style;
+      ctx.strokeStyle=edge.color||ink;
+      ctx.lineWidth=kind==='thick'?3:kind.startsWith('medium')||kind==='double'?2:1;
+      ctx.setLineDash(/dash/i.test(kind)?[4,2]:/dot/i.test(kind)?[1,2]:[]);
+      ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    function cellBorders(r,c,x,y,w,h) {
+      const edges=this.sheet.cells.get(address(r,c))?.style?.borders;
+      if (!edges) return;
+      if (edges.left) border(edges.left,x,y,x,y+h);
+      if (edges.right) border(edges.right,x+w,y,x+w,y+h);
+      if (edges.top) border(edges.top,x,y,x+w,y);
+      if (edges.bottom) border(edges.bottom,x,y+h,x+w,y+h);
+    }
+    const drawBorders=cellBorders.bind(this),primary=ranges.at(-1);
     for (const xp of xParts) for (const yp of yParts) {
       if (!xp.items.length||!yp.items.length) continue;
       ctx.save();ctx.beginPath();ctx.rect(xp.start,yp.start,xp.end-xp.start,yp.end-yp.start);ctx.clip();
@@ -251,6 +294,14 @@ export class CanvasRenderer {
         ctx.fillStyle=grid;ctx.fillRect(x,y,w,h);
         if (b.r0===merge.r0&&b.c0===merge.c0) drawCell(b.r0,b.c0,x,y,w,h);
         ctx.strokeStyle=line;ctx.strokeRect(x-.5,y-.5,w,h);
+      }
+      for (const {i:r,start:y,size:h} of yp.items) for (const {i:c,start:x,size:w} of xp.items) {
+        const merge=merges.find(b=>contains(b,r,c));
+        if (!merge) drawBorders(r,c,x,y,w,h);
+        else if (r===merge.r0&&c===merge.c0) {
+          const rect=this.region(merge,fx,fy);
+          if (rect.w>0&&rect.h>0) drawBorders(r,c,rect.x,rect.y,rect.w,rect.h);
+        }
       }
       for (const range of additions) {
         const b={r0:Math.max(yp.min,range.r0),r1:Math.min(yp.max,range.r1),c0:Math.max(xp.min,range.c0),c1:Math.min(xp.max,range.c1)};
@@ -288,7 +339,7 @@ export class CanvasRenderer {
     ctx.fillStyle=accent;
     if (fx) ctx.fillRect(HEADER_X+fx-1,0,2,height);
     if (fy) ctx.fillRect(0,HEADER_Y+fy-1,width,2);
-    ctx.fillStyle=color('muted');ctx.beginPath();ctx.moveTo(34,21);ctx.lineTo(43,12);ctx.lineTo(43,21);ctx.fill();
+    ctx.fillStyle=color('muted');ctx.beginPath();ctx.moveTo(23,18);ctx.lineTo(32,9);ctx.lineTo(32,18);ctx.fill();
   }
   hit(e) {
     const rect=this.canvas.getBoundingClientRect(), x=e.clientX-rect.left, y=e.clientY-rect.top;
@@ -350,7 +401,7 @@ export class CanvasRenderer {
       if (g.mode==='tap' && g.moved) {g.mode='pan';this.last=null;}
       if (g.mode==='pan') this.scroll.scrollTo(g.x-dx,g.y-dy);
       if (g.mode==='resize') {
-        g.preview=clamp(Math.round(g.size+(g.axis==='cols'?dx:dy)),g.axis==='cols'?32:20,600);
+        g.preview=clamp(Math.round(g.size+(g.axis==='cols'?dx:dy)/this.zoom),g.axis==='cols'?32:20,600);
         this.dimensions();this.invalidate();
       }
       if (g.mode==='reference') cb.reference(g.p,p,false);

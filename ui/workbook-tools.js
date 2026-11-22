@@ -127,13 +127,13 @@ export function setupWorkbookTools(api) {
     if (!imported && (range.r1-range.r0>500 || range.c1-range.c0>15)) {
       host.textContent='Selecciona un rango de hasta 500 filas de datos y 16 columnas para la gráfica.';return;
     }
-    renderChart(host,imported?.range ? chartData(imported.range,value,api.hidden()) : imported ? api.importedChart(imported) : chartData(range,value,api.hidden()),imported?.kind ?? $('tools-chart-type').value,
-      imported?.title ?? $('tools-chart-title').value);
+    renderChart(host,imported?.range ? chartData(imported.range,value,api.hidden(),imported.kind) : imported ? api.importedChart(imported) : chartData(range,value,api.hidden(),$('tools-chart-type').value),imported?.kind ?? $('tools-chart-type').value,
+      imported?.title ?? $('tools-chart-title').value,imported?.axes);
   }
   for (const id of ['tools-chart-type','tools-chart-title','tools-chart-source']) $(id).oninput=showChart;
   $('tools-save-chart').onclick=()=>{
     if (range.r1-range.r0>500 || range.c1-range.c0>15) {message.textContent='Selecciona un rango más pequeño.';return;}
-    const data=chartData(range,value,api.hidden());
+    const data=chartData(range,value,api.hidden(),$('tools-chart-type').value);
     if (!data.series.length) {message.textContent='Selecciona un rango válido con números.';return;}
     const chart={title:$('tools-chart-title').value||'Gráfica',kind:$('tools-chart-type').value,range};
     api.change('charts',[...(api.sheet().charts ?? []),chart]);

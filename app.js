@@ -7,8 +7,9 @@ import {EditorOverlay} from './ui/editor-overlay.js';
 import {point,selectedBox,notation,area,addresses} from './ui/selection.js';
 import {openStorage,importFile,exportFile} from './io/file-manager.js';
 import {parseTSV,tsv} from './io/clipboard.js';
-import {filteredRows,resolveChartData} from './core/data-tools.js';
+import {chartData,filteredRows,resolveChartData} from './core/data-tools.js';
 import {setupWorkbookTools} from './ui/workbook-tools.js';
+import {renderChart} from './ui/chart-view.js';
 
 const $=id=>document.getElementById(id);
 const grid=$('grid'), canvas=grid.querySelector('canvas'), saveStatus=$('save-status');
@@ -66,11 +67,12 @@ function persist() {
 }
 function sync() {
   const a=currentAddress(), range=ranges.at(-1), value=display(engine.value(book.active,a),currentCell()?.style);
-  $('active-cell').textContent=notation(range);
+  if (document.activeElement!==$('active-cell')) $('active-cell').value=notation(range);
   tell(value ? a+' · '+value+(engine.usesCache(book.active,a)?' · Valor guardado por Excel':'') : notation(range));
   editor.show(currentCell()?.raw ?? '');
   const style=currentCell()?.style ?? {};
-  for (const id of ['bold','italic']) $(id).setAttribute('aria-pressed',Boolean(style[id]));
+  for (const id of ['bold','italic','underline','wrap','borders']) $(id).setAttribute('aria-pressed',Boolean(style[id]));
+  $('font-size').value=String(style.size ?? '');
   for (const id of ['align','format']) $(id).value=style[id] ?? '';
   for (const id of ['fg','bg']) $(id).style.setProperty('--swatch',style[id] ?? 'var(--accent)');
   $('undo').disabled=!history.undoStack.length;
@@ -85,10 +87,10 @@ function refreshRows() {
   badge.hidden=!hidden.size&&!sheet().filter;
   badge.textContent=hidden.size+' ocultas';
 }
-const history=new CommandManager(()=>{refreshRows();sync();persist();});
+const history=new CommandManager(()=>{refreshRows();sync();invalidateCharts();persist();});
 const renderer=new CanvasRenderer(grid,{
   state:()=>({active,ranges,fill:fillPreview,reference:referencePreview}),
-  layout:()=>editor.position(),
+  layout:()=>{editor.position();layoutCharts();},
   value:a=>engine.value(book.active,a),
   cached:a=>engine.usesCache(book.active,a),
   beforePointer:()=>{editor.finish(true,false);$('palette').hidden=true;$('cell-menu').hidden=true;},
@@ -280,6 +282,8 @@ function activate(id) {
   if (view) ({active,anchor,ranges}=view);
   renderer.setSheet(sheet());
   refreshRows();
+  $('document-name').textContent=sheet().fileName || 'Libro de trabajo';
+  invalidateCharts();
   renderer.scroll.scrollTo(view?.x ?? 0,view?.y ?? 0);
   renderTabs();
   sync();
@@ -377,9 +381,82 @@ for (const type of ['copy','cut','paste']) $(type).onclick=async()=>{
 $('range-mode').onclick=()=>{
   touchRange=!touchRange;$('range-mode').setAttribute('aria-pressed',touchRange);
 };
-$('toggle').onclick=()=>{
-  const ribbon=$('ribbon');ribbon.hidden=!ribbon.hidden;
-  $('toggle').setAttribute('aria-expanded',!ribbon.hidden);
+const ribbon=$('ribbon'), ribbonTabs=[...document.querySelectorAll('[data-ribbon]')];
+function collapseRibbon(collapsed) {
+  ribbon.hidden=collapsed;
+  $('toggle').setAttribute('aria-expanded',!collapsed);
+  $('toggle').setAttribute('aria-label',collapsed?'Expandir cinta':'Contraer cinta');
+  $('toggle').title=$('toggle').getAttribute('aria-label');
+  $('toggle').textContent=collapsed?'⌄':'⌃';
+}
+for (const tab of ribbonTabs) tab.onclick=()=>{
+  for (const item of ribbonTabs) item.setAttribute('aria-pressed',item===tab);
+  for (const panel of ribbon.children) panel.hidden=panel.dataset.panel!==tab.dataset.ribbon;
+  collapseRibbon(false);
+};
+$('toggle').onclick=()=>collapseRibbon(!ribbon.hidden);
+$('active-cell').onkeydown=e=>{
+  if (e.key==='Escape') {canvas.focus();sync();return;}
+  if (e.key!=='Enter') return;
+  const [a,b,extra]=e.target.value.trim().split(':').map(v=>v.trim());
+  const first=coordinates(a), last=b?coordinates(b):first;
+  if (!first||!last||extra||hidden.has(first.r)) {tell('Escribe una dirección visible, por ejemplo B12 o B12:D20.');return;}
+  editor.finish(true,false);
+  active=first;anchor=first;ranges=[box(first,last)];
+  canvas.focus({preventScroll:true});renderer.ensure(first);sync();
+};
+$('active-cell').onblur=()=>{$('active-cell').value=notation(ranges.at(-1));};
+function setZoom(value) {
+  const zoom=clamp(Number(value),50,160);
+  $('zoom').value=zoom;
+  $('zoom-reset').textContent=zoom+'%';
+  renderer.setZoom(zoom/100);
+}
+$('zoom').oninput=e=>setZoom(e.target.value);
+$('zoom-out').onclick=()=>setZoom(Number($('zoom').value)-10);
+$('zoom-in').onclick=()=>setZoom(Number($('zoom').value)+10);
+$('zoom-reset').onclick=()=>setZoom(100);
+$('font-size').onchange=e=>styleCells('size',Number(e.target.value));
+$('borders').onclick=()=>{
+  editor.finish(true,false);
+  const edge={style:'thin',color:'#435a60'};
+  styleCells('borders',currentCell()?.style?.borders?null:{left:edge,right:edge,top:edge,bottom:edge});
+};
+$('underline').onclick=()=>{editor.finish(true,false);styleCells('underline',!currentCell()?.style?.underline);};
+$('wrap').onclick=()=>{editor.finish(true,false);styleCells('wrap',!currentCell()?.style?.wrap);};
+const chartLayer=$('sheet-charts');
+let chartNodes=[];
+function invalidateCharts() {
+  for (const item of chartNodes) item.node?.remove();
+  chartNodes=(sheet().charts ?? []).map((chart,i)=>({
+    chart,anchor:chart.anchor ?? {from:{r:Math.min(ROWS-1,(chart.range?.r1??4)+2+i*17),c:chart.range?.c0??1,dx:0,dy:0},w:590,h:350}
+  }));
+  renderer.invalidate();
+}
+function layoutCharts() {
+  const clip=renderer.chartClip();
+  chartLayer.style.clipPath='inset('+clip.y+'px '+Math.max(0,grid.clientWidth-clip.w)+'px '+Math.max(0,grid.clientHeight-clip.h)+'px '+clip.x+'px)';
+  if (chartLayer.hidden) return;
+  for (const item of chartNodes) {
+    const {x,y,w,h}=renderer.chartRect(item.anchor);
+    const visible=w>0&&h>0&&x<clip.w&&y<clip.h&&x+w>clip.x&&y+h>clip.y;
+    if (!visible) {if(item.node) item.node.hidden=true;continue;}
+    if (!item.node) {
+      const {chart}=item, node=document.createElement('section'),title=document.createElement('h3'),content=document.createElement('div');
+      node.className='sheet-chart';title.textContent=chart.title;content.className='chart-content';
+      node.append(title,content);chartLayer.append(node);item.node=node;
+      const data=chart.range?chartData(chart.range,a=>engine.value(book.active,a),hidden,chart.kind):
+        resolveChartData(chart,sheet(),book,(id,a)=>engine.value(id,a));
+      renderChart(content,data,chart.kind,chart.title,chart.axes);
+    }
+    item.node.hidden=false;
+    Object.assign(item.node.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});
+  }
+}
+$('chart-toggle').onclick=()=>{
+  chartLayer.hidden=!chartLayer.hidden;
+  $('chart-toggle').setAttribute('aria-pressed',!chartLayer.hidden);
+  renderer.invalidate();
 };
 function setTheme(theme) {
   document.documentElement.dataset.theme=theme;renderer.invalidate();
@@ -400,6 +477,7 @@ filePicker.onchange=async()=>{
   tell('Leyendo '+file.name+'…');
   try {
     const after=await importFile(file);
+    for (const tab of after) tab.fileName=file.name;
     const warning=after.warnings?.length?'\n\n'+after.warnings.join('\n'):'';
     if (!window.confirm('¿Reemplazar el libro abierto? Puedes deshacer la importación.'+warning)) {sync();return;}
     editor.finish(true,false);
