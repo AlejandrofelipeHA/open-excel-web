@@ -388,24 +388,28 @@ function setTheme(theme) {
 try {setTheme(localStorage.getItem('luma-theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}
 catch {}
 $('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
-$('import').onclick=()=>{
-  const picker=document.createElement('input');
-  picker.type='file';picker.accept='.xlsx,.xlsm,.xls,.csv,.ods';
-  picker.onchange=async()=>{
-    if (!picker.files[0]) return;
-    try {
-      const after=await importFile(picker.files[0]);
-      const warning=after.warnings?.length?'\n\n'+after.warnings.join('\n'):'';
-      if (!window.confirm('¿Reemplazar el libro abierto? Puedes deshacer la importación.'+warning)) return;
-      editor.finish(true,false);
-      recordView();
-      const before=book.sheets,id=book.active;
-      const swap=(sheets,activeId)=>{book.sheets=sheets;engine.rebuild();activate(activeId);};
-      history.run({execute:()=>swap(after,after[0].id),undo:()=>swap(before,id)});
-      tell('Importado · '+picker.files[0].name+(warning?' · '+after.warnings.join(' '):''));
-    } catch(error) {tell('Error al importar · '+error.message);}
-  };
-  picker.click();
+const filePicker=$('import-file');
+let importPending=false;
+$('import').onclick=()=>filePicker.click();
+filePicker.onchange=async()=>{
+  const file=filePicker.files[0];
+  filePicker.value='';
+  if (!file||importPending) return;
+  importPending=true;
+  $('import').disabled=true;
+  tell('Leyendo '+file.name+'…');
+  try {
+    const after=await importFile(file);
+    const warning=after.warnings?.length?'\n\n'+after.warnings.join('\n'):'';
+    if (!window.confirm('¿Reemplazar el libro abierto? Puedes deshacer la importación.'+warning)) {sync();return;}
+    editor.finish(true,false);
+    recordView();
+    const before=book.sheets,id=book.active;
+    const swap=(sheets,activeId)=>{book.sheets=sheets;engine.rebuild();activate(activeId);};
+    history.run({execute:()=>swap(after,after[0].id),undo:()=>swap(before,id)});
+    tell('Importado · '+file.name+(warning?' · '+after.warnings.join(' '):''));
+  } catch(error) {tell('Error al importar · '+error.message);}
+  finally {importPending=false;$('import').disabled=false;}
 };
 for (const button of document.querySelectorAll('[data-export]')) button.onclick=()=>{
   editor.finish(true,false);
@@ -464,4 +468,4 @@ setupWorkbookTools({
 });
 activate(book.active);
 persist();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(error=>console.warn('PWA',error));
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(error=>console.warn('PWA',error));

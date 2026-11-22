@@ -1,4 +1,6 @@
-const CACHE='luma-shell-v2';
+const VERSION='v3';
+const PREFIX='luma-shell:'+self.registration.scope+':';
+const CACHE=PREFIX+VERSION;
 const SHELL=[
   './','./index.html','./styles.css','./app.js','./manifest.json',
   './assets/icon-192.png','./assets/icon-512.png','./assets/xlsx.full.min.js',
@@ -10,13 +12,23 @@ const SHELL=[
 ];
 const appURLs=new Set(SHELL.map(path=>new URL(path,self.registration.scope).href));
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(path=>new Request(path,{cache:'reload'})))).then(()=>self.skipWaiting()));
+  event.waitUntil((async()=>{
+    const cache=await caches.open(CACHE);
+    await Promise.all([...appURLs].map(async url=>{
+      const fresh=new URL(url);
+      fresh.searchParams.set('luma-shell',VERSION);
+      const response=await fetch(fresh,{cache:'reload'});
+      if (!response.ok) throw new Error('PWA shell: '+response.status+' '+url);
+      await cache.put(url,response);
+    }));
+    await self.skipWaiting();
+  })());
 });
 self.addEventListener('activate',event=>{
   event.waitUntil((async()=>{
     const names=await caches.keys();
-    await Promise.all(names.filter(name=>name.startsWith('luma-shell-')&&name!==CACHE).map(name=>caches.delete(name)));
-    // A navigation loads one coherent shell version; open editors keep their current code.
+    await Promise.all(names.filter(name=>name.startsWith(PREFIX)&&name!==CACHE).map(name=>caches.delete(name)));
+    await self.clients.claim();
   })());
 });
 self.addEventListener('fetch',event=>{
