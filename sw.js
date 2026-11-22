@@ -1,4 +1,4 @@
-const VERSION='v3';
+const VERSION='v4';
 const PREFIX='luma-shell:'+self.registration.scope+':';
 const CACHE=PREFIX+VERSION;
 const SHELL=[

@@ -67,7 +67,7 @@ SheetJS CE 0.20.3 se distribuye localmente para habilitar XLSX y CSV desde la pr
 2. Abre **Settings → Pages** y selecciona **Deploy from a branch**.
 3. Selecciona **main**, el directorio **/(root)** y pulsa **Save**.
 4. Abre la URL de Pages cuando termine el despliegue. Los paths relativos funcionan bajo el subdirectorio del repositorio.
-5. Cuando cambies recursos cacheados, actualiza la versión CACHE en sw.js para publicar un nuevo conjunto offline.
+5. Cuando cambies recursos cacheados, actualiza VERSION en sw.js para publicar un nuevo conjunto offline.
 
 ## Añadir una función
 

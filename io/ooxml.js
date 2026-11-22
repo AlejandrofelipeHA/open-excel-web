@@ -143,9 +143,16 @@ const xmlBytes=new TextEncoder();
 export function styledXlsx(xlsx,out,sheets) {
   const initial=xlsx.write(out,{type:'array',bookType:'xlsx',cellStyles:true});
   const zip=xlsx.CFB.read(new Uint8Array(initial),{type:'buffer'});
-  const read=path=>parse(decoded(xlsx.CFB.find(zip,path)));
-  const save=(path,doc)=>xlsx.CFB.utils.cfb_add(zip,path,xmlBytes.encode(new XMLSerializer().serializeToString(doc)));
-  const stylePath='xl/styles.xml', styles=read(stylePath), root=styles.documentElement, ns=root.namespaceURI;
+  const entry=path=>xlsx.CFB.find(zip,'/'+path);
+  const read=path=>parse(decoded(entry(path)));
+  function save(path,doc) {
+    const part=entry(path);
+    part.content=xmlBytes.encode(new XMLSerializer().serializeToString(doc));
+    part.size=part.content.length;
+  }
+  const stylePath='xl/styles.xml', styles=read(stylePath), root=styles?.documentElement;
+  if (!root) throw new Error('El XLSX generado no contiene un catálogo de estilos válido.');
+  const ns=root.namespaceURI;
   const create=(doc,tag,attrs={})=>{
     const node=doc.createElementNS(ns,tag);
     for (const [key,value] of Object.entries(attrs)) node.setAttribute(key,value);
