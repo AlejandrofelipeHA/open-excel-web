@@ -59,6 +59,19 @@
         <button id="clear" title="Borrar contenido">Borrar</button>
       </div>
     </div>
+    <nav class="data-ribbon" aria-label="Datos y visualización">
+      <button data-tool="filter"><span aria-hidden="true">≡</span> Filtrar <span id="filter-count" hidden></span></button>
+      <button data-tool="sort"><span aria-hidden="true">⇅</span> Ordenar</button>
+      <button data-tool="find"><span aria-hidden="true">⌕</span> Buscar</button>
+      <button data-tool="chart"><span aria-hidden="true">▥</span> Gráficas</button>
+      <button data-tool="view"><span aria-hidden="true">⊞</span> Vista</button>
+    </nav>
+    <div id="cell-menu" class="palette context-menu" hidden aria-label="Acciones de celda">
+      <button data-cell-action="copy">Copiar</button><button data-cell-action="cut">Cortar</button>
+      <button data-cell-action="paste">Pegar</button><button data-cell-action="clear">Borrar contenido</button>
+      <button data-cell-action="bold">Negrita</button><button data-cell-action="filter">Filtrar selección</button>
+      <button data-cell-action="chart">Graficar selección</button>
+    </div>
     <div id="palette" class="palette" hidden></div>
     <div class="formula">
       <output id="active-cell" aria-label="Selección">A1</output>
@@ -77,5 +90,51 @@
       <div class="status"><span id="grid-status" aria-live="polite">A1</span><span>12.000 filas · 1.024 columnas</span></div>
     </footer>
   </main>
+  <dialog id="workbook-tools" aria-labelledby="tools-title">
+    <form id="tools-form">
+      <header class="dialog-header">
+        <div><h2 id="tools-title"></h2><p id="tools-range"></p></div>
+        <button type="button" id="tools-close" aria-label="Cerrar">×</button>
+      </header>
+      <div class="dialog-body">
+        <label data-panel="filter sort">Columna <select id="tools-column"></select></label>
+        <div data-panel="filter" class="tool-fields">
+          <label>Condición <select id="tools-condition"><option value="contains">Contiene</option><option value="not-contains">No contiene</option><option value="equals">Es igual a</option><option value="gt">Mayor que</option><option value="gte">Mayor o igual</option><option value="lt">Menor que</option><option value="lte">Menor o igual</option><option value="empty">Está vacía</option><option value="nonempty">Tiene contenido</option></select></label>
+          <label>Valor <input id="tools-query" autocomplete="off"></label>
+        </div>
+        <div data-panel="sort" class="tool-fields">
+          <label>Orden <select id="tools-order"><option value="asc">Ascendente</option><option value="desc">Descendente</option></select></label>
+          <label class="check"><input id="tools-header" type="checkbox" checked> La primera fila contiene encabezados</label>
+        </div>
+        <div data-panel="find" class="tool-fields">
+          <label>Buscar <input id="tools-find" autocomplete="off"></label>
+          <label class="check"><input id="tools-raw" type="checkbox"> Buscar en fórmulas y texto original</label>
+          <div class="tool-actions"><button type="button" id="tools-prev">Anterior</button><button type="button" id="tools-next">Siguiente</button></div>
+          <label>Reemplazar en el contenido original <input id="tools-replacement" autocomplete="off"></label>
+          <button type="button" id="tools-replace-all">Reemplazar todas las coincidencias</button>
+        </div>
+        <div data-panel="chart" class="tool-fields">
+          <label>Origen <select id="tools-chart-source"></select></label>
+          <div class="tool-actions">
+            <label>Título <input id="tools-chart-title" autocomplete="off"></label>
+            <label>Tipo <select id="tools-chart-type"><option value="bar">Columnas</option><option value="line">Líneas</option><option value="pie">Circular</option></select></label>
+          </div>
+          <div id="tools-chart-content" class="chart-content"></div>
+          <div class="tool-actions"><button type="button" id="tools-save-chart">Guardar selección como gráfica</button><button type="button" id="tools-delete-chart">Quitar gráfica guardada</button></div>
+        </div>
+        <div data-panel="view" class="tool-fields">
+          <label class="check"><input id="freeze-row" type="checkbox"> Inmovilizar primera fila</label>
+          <label class="check"><input id="freeze-col" type="checkbox"> Inmovilizar primera columna</label>
+          <label class="check"><input id="show-hidden" type="checkbox"> Mostrar filas ocultas del archivo original</label>
+        </div>
+        <p id="tools-message" role="status"></p>
+        <div class="tool-actions">
+          <button id="tools-clear-filter" type="button" hidden>Quitar todos los filtros</button>
+          <button id="tools-remove-rule" data-panel="filter" type="button" hidden>Quitar filtro de esta columna</button>
+          <button id="tools-apply" class="export" type="submit" hidden></button>
+        </div>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

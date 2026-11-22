@@ -44,7 +44,20 @@ Las referencias circulares se identifican cuando no se puede ordenar topológica
 
 ## Compatibilidad de archivos y fórmulas
 
-CSV exporta valores de la hoja activa. XLSX exporta todas las hojas, fórmulas de las funciones estándar y formatos numéricos comunes. Los estilos visuales de celdas se conservan en IndexedDB. La aplicación implementa un subconjunto de Excel, con 20 funciones bilingües, operadores, comparaciones, texto, números, booleanos y rangos rectangulares. La sintaxis admite puntos decimales dentro de las fórmulas y separadores de argumentos de coma o punto y coma. HOY devuelve el número de serie de fecha de Excel y se actualiza al recalcular la celda o al reabrir el libro. Aplica **Fecha** para mostrarla como fecha.
+- **Abrir libros.** Importa XLSX, XLSM, XLS, ODS o CSV. XLSX y XLSM tienen la lectura más completa. Puedes recorrer sus hojas y ver combinaciones, estilos visuales básicos, formatos numéricos personalizados y dimensiones. En Vista puedes mostrar filas ocultas del archivo.
+- **Fórmulas.** Luma recalcula sus funciones compatibles, con referencias entre hojas, rangos completos como B:B y operadores. Si una fórmula no es compatible y el archivo trae su último resultado, la celda lo muestra con un triángulo ámbar. Ese resultado es el último guardado en Excel. HOY y AHORA se actualizan al recalcular la fórmula o al reabrir el libro.
+- **Exportar.** CSV guarda valores de la hoja activa. XLSX guarda todas las hojas, fórmulas, formatos numéricos, fuentes y rellenos básicos, alineación, celdas combinadas y dimensiones. El rango de autofiltro se exporta, mientras que sus criterios y las gráficas guardadas en Luma permanecen en el almacenamiento local.
+- **Alcance.** Macros, vínculos externos, tablas dinámicas, formato condicional y fórmulas de matrices dinámicas requieren Excel u otro motor compatible. Si el archivo excede la cuadrícula, se informa cuántas celdas quedaron fuera antes de importarlo.
+
+## Explorar datos
+
+1. Selecciona un rango con su primera fila de encabezado. **Filtrar** permite aplicar condiciones de texto, números y celdas vacías por columna. Las condiciones de varias columnas se combinan y las filas ocultas conservan su dirección. **Quitar todos los filtros** restaura la visibilidad.
+2. **Ordenar** mueve filas completas dentro del rango elegido. Conserva la primera fila si marcas la opción de encabezado y ajusta las referencias relativas de las fórmulas movidas. Las referencias desde fuera del rango conservan la dirección que apuntaban.
+3. **Buscar** o Ctrl/Cmd + F recorre coincidencias. También puedes buscar en fórmulas y reemplazar texto original de toda la hoja en un solo comando reversible.
+4. En **Gráficas**, deja los nombres de series en la primera fila y los nombres de categorías en la primera columna. Elige columnas, líneas o circular y guarda la gráfica para volver a abrirla. Las gráficas guardadas leen los valores actuales del rango y respetan los filtros. Las gráficas compatibles de Excel se muestran a partir de los rangos de origen o los datos guardados en el archivo.
+5. En **Vista**, inmoviliza la primera fila o columna al desplazarte. El clic derecho abre acciones rápidas para la selección.
+
+Algunas funciones nuevas son SUMAR.SI.CONJUNTO, CONTAR.SI, BUSCARX, INDICE, COINCIDIR, SUMAPRODUCTO, MEDIANA, FECHA, FIN.MES, PAGO y VNA. Las fórmulas usan punto decimal y coma o punto y coma como separadores de argumentos.
 
 SheetJS CE 0.20.3 se distribuye localmente para habilitar XLSX y CSV desde la primera carga offline después de instalar la caché. Su origen es https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js y su licencia Apache 2.0 está en assets/SHEETJS-LICENSE. El código de Luma usa la licencia MIT.
 

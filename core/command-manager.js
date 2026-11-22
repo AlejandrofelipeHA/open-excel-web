@@ -37,7 +37,7 @@ export class CellCommand {
     for (const [a,cell] of patch) {
       const previous = this.book.get(this.sheet).cells.get(a);
       this.book.set(this.sheet,a,cell);
-      if ((previous?.raw ?? '') !== (cell?.raw ?? '')) changed.push(a);
+      if ((previous?.raw ?? '') !== (cell?.raw ?? '') || previous?.cached !== cell?.cached || previous?.error !== cell?.error) changed.push(a);
     }
     this.engine.update(this.sheet,changed);
   }

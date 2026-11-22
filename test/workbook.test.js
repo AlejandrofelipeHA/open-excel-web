@@ -101,3 +101,52 @@ test('real XLSX and CSV round trip via vendored SheetJS',async()=>{
   assert.equal(csv.cells.get('B1').raw,'5');
   assert.equal(csv.cells.get('A2').raw,"'=literal");
 });
+
+test('whole rows and columns, conditional aggregates, lookups and Excel prefixes',()=>{
+  const {set,value}=setup();
+  set({A1:'Manzana',A2:'Mandarina',A3:'Pera',A13:'5',B1:'8',B2:'12',B3:'5',
+    D1:'=SUMA(B:B)',D2:'=SUMA(13:13)',D3:'=SUMAR.SI(A1:A3;"Ma*";B1:B3)',
+    D4:'=CONTAR.SI.CONJUNTO(A1:A3;"<>Pera";B1:B3;">10")',
+    D5:'=_xlfn.XLOOKUP("Mandarina",A1:A3,B1:B3)',
+    D6:'=INDICE(B1:B3;COINCIDIR("Pera";A1:A3;0))',
+    D7:'=CONTAR.BLANCO(B:B)',D8:'=SI(FALSO;;42)',
+    D9:'=SUMAPRODUCTO(B1:B3;B1:B3)',D10:'=MINUSC("ABC")'});
+  assert.deepEqual(Array.from({length:10},(_,i)=>value('D'+(i+1))),[25,5,20,1,12,5,11997,42,233,'abc']);
+  set({B3:'7',A13:'7'});
+  assert.equal(value('D1'),27);
+  assert.equal(value('D2'),7);
+  assert.equal(value('D6'),7);
+  assert.equal(excelFormula('=BUSCARX(A1;A2:A3;B2:B3)',excelAliases),'_xlfn.XLOOKUP(A1,A2:A3,B2:B3)');
+});
+
+test('cached results are explicit and edits invalidate their previous snapshot',()=>{
+  const {book,engine,history,set,value}=setup();
+  history.run(new CellCommand(book,engine,book.active,new Map([['A1',{raw:'=UNIMPLEMENTED(1)',style:{},cached:90}]])));
+  assert.equal(value('A1'),90);
+  assert.equal(engine.usesCache(book.active,'A1'),true);
+  set({A1:'=UNIMPLEMENTED(2)'});
+  assert.equal(value('A1'),'#¿NOMBRE?');
+  assert.equal(engine.usesCache(book.active,'A1'),false);
+  history.undo();
+  assert.equal(value('A1'),90);
+});
+
+test('filters leave addresses intact, sorting moves rows and adjusts relative formulas',async()=>{
+  const {filteredRows,sortCells,findCells,chartData}=await import('../core/data-tools.js');
+  const {book,engine,history,set,value}=setup();
+  set({A1:'Producto',B1:'Unidades',C1:'Dobles',A2:'Pera',B2:'3',C2:'=B2*2',
+    A3:'Maíz',B3:'9',C3:'=B3*2',A4:'Manzana',B4:'8',C4:'=B4*2'});
+  const range={r0:0,r1:3,c0:0,c1:2},sheet=book.get(book.active);
+  const filter={range,rules:[{column:0,mode:'contains',query:'ma'},{column:1,mode:'equals',query:'9'}]};
+  const hidden=filteredRows(filter,value);
+  assert.deepEqual([...hidden],[1,3]);
+  assert.deepEqual(chartData(range,value,hidden),{labels:['Maíz'],
+    series:[{name:'Unidades',values:[9]},{name:'Dobles',values:[18]}]});
+  history.run(new CellCommand(book,engine,book.active,sortCells(sheet,range,1,false,true,value)));
+  assert.equal(value('A2'),'Maíz');
+  assert.equal(sheet.cells.get('C2').raw,'=B2*2');
+  assert.equal(value('C2'),18);
+  assert.deepEqual(findCells(sheet,'Pera',value,false),[{a:'A4',r:3,c:0}]);
+  history.undo();
+  assert.equal(value('A2'),'Pera');
+});

@@ -67,3 +67,38 @@ footer {flex:none;background:var(--surface);border-top:1px solid var(--line);pad
   #fx-label {width:34px}
   .tabs button {min-height:43px}
 }
+
+.data-ribbon {display:flex;flex:none;align-items:center;gap:4px;padding:3px 14px;overflow:auto;border-bottom:1px solid var(--line);scrollbar-width:thin}
+.data-ribbon button {font-weight:600}
+.data-ribbon button span:first-child {color:var(--accent);margin-right:4px}
+#filter-count {color:var(--accent);border-radius:5px;background:var(--selection);padding:1px 5px}
+#workbook-tools {width:min(94vw,680px);max-height:88dvh;padding:0;color:var(--ink);background:var(--paper);
+  border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 72px #0f20294a}
+#workbook-tools::backdrop {background:#0d1d295a}
+.dialog-header,.dialog-body {padding:15px 18px}
+.dialog-header {display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--line);background:var(--surface)}
+.dialog-header h2 {margin:0;font-size:19px}
+.dialog-header p {margin:3px 0 0;color:var(--muted)}
+.dialog-header button {font-size:23px}
+.dialog-body,.tool-fields {display:grid;gap:12px}
+.dialog-body label {display:grid;gap:4px;font-weight:600}
+.dialog-body label.check {display:flex;align-items:center;gap:8px;font-weight:500}
+.dialog-body input:not([type=checkbox]),.dialog-body select {min-width:0;width:100%;border:1px solid var(--line);background:var(--paper);
+  border-radius:6px;padding:7px 10px;color:var(--ink);font:inherit;font-size:16px}
+.dialog-body button:not(.export) {border-color:var(--line)}
+.tool-actions {display:flex;gap:8px;flex-wrap:wrap}
+.tool-actions label {flex:1 1 150px}
+#tools-message {margin:0;color:var(--accent)}
+#tools-message:empty,.tool-actions:empty {display:none}
+.chart-content {border:1px solid var(--line);border-radius:7px;padding:9px;color:var(--muted)}
+.chart-content svg {display:block;width:100%;height:auto}
+.chart-content svg text {fill:var(--muted);font:12px system-ui}
+.chart-grid {stroke:var(--line)}
+.chart-legend {display:flex;gap:6px 15px;flex-wrap:wrap;padding:0;margin:4px 0 0;list-style:none}
+.chart-legend li {display:flex;align-items:center;gap:5px}
+.chart-legend li span {width:10px;height:10px;border-radius:3px}
+@media(max-width:650px) {.data-ribbon {padding:2px 6px;gap:0}.dialog-header,.dialog-body {padding:11px}.data-ribbon button {min-height:36px}}
+
+.context-menu {display:grid;gap:2px;min-width:170px}
+.context-menu button {text-align:left}
+.context-menu button:hover {background:var(--selection)}

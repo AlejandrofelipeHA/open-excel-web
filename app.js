@@ -7,6 +7,8 @@ import {EditorOverlay} from './ui/editor-overlay.js';
 import {point,selectedBox,notation,area,addresses} from './ui/selection.js';
 import {openStorage,importFile,exportFile} from './io/file-manager.js';
 import {parseTSV,tsv} from './io/clipboard.js';
+import {filteredRows,resolveChartData} from './core/data-tools.js';
+import {setupWorkbookTools} from './ui/workbook-tools.js';
 
 const $=id=>document.getElementById(id);
 const grid=$('grid'), canvas=grid.querySelector('canvas'), saveStatus=$('save-status');
@@ -18,6 +20,7 @@ const sheet=()=>book.get(book.active);
 if (!saved) seed(book);
 const engine=new FormulaEngine(book);
 const views=new Map();
+let hidden=new Set();
 let active,anchor,ranges,fillPreview,referencePreview,saveVersion=0;
 let touchRange=false, clipboard, clipboardWrite=0, clipboardRead=0;
 resetSelection();
@@ -64,7 +67,7 @@ function persist() {
 function sync() {
   const a=currentAddress(), range=ranges.at(-1), value=display(engine.value(book.active,a),currentCell()?.style);
   $('active-cell').textContent=notation(range);
-  tell(value ? a+' · '+value : notation(range));
+  tell(value ? a+' · '+value+(engine.usesCache(book.active,a)?' · Valor guardado por Excel':'') : notation(range));
   editor.show(currentCell()?.raw ?? '');
   const style=currentCell()?.style ?? {};
   for (const id of ['bold','italic']) $(id).setAttribute('aria-pressed',Boolean(style[id]));
@@ -74,12 +77,21 @@ function sync() {
   $('redo').disabled=!history.redoStack.length;
   renderer.invalidate();
 }
-const history=new CommandManager(()=>{sync();persist();});
+function refreshRows() {
+  hidden=filteredRows(sheet().filter,a=>engine.value(book.active,a));
+  if (!sheet().revealSourceRows) for (const row of sheet().sourceHidden ?? []) hidden.add(row);
+  renderer.setHidden(hidden);
+  const badge=$('filter-count');
+  badge.hidden=!hidden.size&&!sheet().filter;
+  badge.textContent=hidden.size+' ocultas';
+}
+const history=new CommandManager(()=>{refreshRows();sync();persist();});
 const renderer=new CanvasRenderer(grid,{
   state:()=>({active,ranges,fill:fillPreview,reference:referencePreview}),
   layout:()=>editor.position(),
   value:a=>engine.value(book.active,a),
-  beforePointer:()=>{editor.finish(true,false);$('palette').hidden=true;},
+  cached:a=>engine.usesCache(book.active,a),
+  beforePointer:()=>{editor.finish(true,false);$('palette').hidden=true;$('cell-menu').hidden=true;},
   referencing:()=>editor.referencing,
   touchRange:()=>touchRange,
   select,extend,fill,resize,
@@ -97,7 +109,7 @@ const renderer=new CanvasRenderer(grid,{
 });
 const editor=new EditorOverlay({
   root:grid,fx:$('fx'),menu:$('suggestions'),grid:canvas,
-  layout:()=>({...renderer.rect(active),clipX:50,clipY:30,clipRight:renderer.scroll.clientWidth,clipBottom:renderer.scroll.clientHeight}),
+  layout:()=>({...renderer.rect(active),...renderer.editorClip(active)}),
   save:raw=>apply(new Map([[currentAddress(),{raw,style:currentCell()?.style ?? {}}]])),
   move
 });
@@ -106,7 +118,7 @@ function apply(updates) {
   for (const [a,cell] of updates) {
     const old=sheet().cells.get(a);
     if ((!old && !cell?.raw && !Object.keys(cell?.style ?? {}).length) ||
-      (old?.raw===cell?.raw && JSON.stringify(old?.style)===JSON.stringify(cell?.style))) updates.delete(a);
+      (old?.raw===cell?.raw && old?.cached===cell?.cached && old?.error===cell?.error && JSON.stringify(old?.style)===JSON.stringify(cell?.style))) updates.delete(a);
   }
   if (updates.size) history.run(new CellCommand(book,engine,book.active,updates));
 }
@@ -114,7 +126,7 @@ function select(p,extendCurrent,add) {
   const target=point(p);
   if (!extendCurrent) {active=target;anchor=target;}
   if (!extendCurrent && !add) ranges=[];
-  const range=selectedBox(anchor,target,p.kind);
+  const range=p.merge&&!extendCurrent?p.merge:selectedBox(anchor,target,p.kind);
   if (extendCurrent) ranges[ranges.length-1]=range;
   else ranges.push(range);
   sync();
@@ -129,7 +141,10 @@ function move(dr,dc,extendCurrent=false) {
     r:range.r0===anchor.r?range.r1:range.r0,
     c:range.c0===anchor.c?range.c1:range.c0
   }:active;
-  const p={r:clamp(edge.r+dr,0,ROWS-1),c:clamp(edge.c+dc,0,COLS-1)};
+  let row=clamp(edge.r+dr,0,ROWS-1);
+  for (const step=Math.sign(dr)||1;hidden.has(row)&&row>=0&&row<ROWS;row+=step) {}
+  if (row<0||row>=ROWS) return;
+  const p={r:row,c:clamp(edge.c+dc,0,COLS-1)};
   select(p,extendCurrent,false);
   renderer.ensure(p);
 }
@@ -156,7 +171,7 @@ function fill(p,end,done) {
       if (contains(source,r,c)) continue;
       const sr=source.r0+repeat(r-source.r0,height),sc=source.c0+repeat(c-source.c0,width);
       const entry=sheet().cells.get(address(sr,sc));
-      updates.set(address(r,c),entry ? {...entry,raw:shiftFormula(entry.raw,r-sr,c-sc)} : undefined);
+      updates.set(address(r,c),entry ? {...entry,raw:shiftFormula(entry.raw,r-sr,c-sc),cached:undefined} : undefined);
     }
     ranges[ranges.length-1]=target;
     apply(updates);sync();
@@ -176,8 +191,9 @@ function styleCells(key,value) {
   const updates=new Map();
   for (const a of addresses(ranges)) {
     const cell=sheet().cells.get(a), style={...cell?.style};
+    if (key==='format') delete style.excelFormat;
     if (value) style[key]=value;else delete style[key];
-    updates.set(a,{raw:cell?.raw ?? '',style});
+    updates.set(a,{...cell,raw:cell?.raw ?? '',style});
   }
   apply(updates);
 }
@@ -210,7 +226,7 @@ function paste(text,source,target) {
     if (r>=ROWS || c>=COLS) return;
     const a=address(r,c);
     if (internal && !internal.cut) {
-      updates.set(a,value?{...value,raw:shiftFormula(value.raw,originR-internal.range.r0,originC-internal.range.c0)}:undefined);
+      updates.set(a,value?{...value,raw:shiftFormula(value.raw,originR-internal.range.r0,originC-internal.range.c0),cached:undefined}:undefined);
     } else if (internal) updates.set(a,value);
     else updates.set(a,{raw:value,style:sheet().cells.get(a)?.style ?? {}});
   }));
@@ -263,6 +279,7 @@ function activate(id) {
   resetSelection();
   if (view) ({active,anchor,ranges}=view);
   renderer.setSheet(sheet());
+  refreshRows();
   renderer.scroll.scrollTo(view?.x ?? 0,view?.y ?? 0);
   renderTabs();
   sync();
@@ -373,17 +390,19 @@ catch {}
 $('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 $('import').onclick=()=>{
   const picker=document.createElement('input');
-  picker.type='file';picker.accept='.xlsx,.csv';
+  picker.type='file';picker.accept='.xlsx,.xlsm,.xls,.csv,.ods';
   picker.onchange=async()=>{
     if (!picker.files[0]) return;
     try {
       const after=await importFile(picker.files[0]);
-      if (!window.confirm('¿Reemplazar el libro abierto? Puedes deshacer la importación.')) return;
+      const warning=after.warnings?.length?'\n\n'+after.warnings.join('\n'):'';
+      if (!window.confirm('¿Reemplazar el libro abierto? Puedes deshacer la importación.'+warning)) return;
       editor.finish(true,false);
       recordView();
       const before=book.sheets,id=book.active;
       const swap=(sheets,activeId)=>{book.sheets=sheets;engine.rebuild();activate(activeId);};
       history.run({execute:()=>swap(after,after[0].id),undo:()=>swap(before,id)});
+      tell('Importado · '+picker.files[0].name+(warning?' · '+after.warnings.join(' '):''));
     } catch(error) {tell('Error al importar · '+error.message);}
   };
   picker.click();
@@ -393,6 +412,56 @@ for (const button of document.querySelectorAll('[data-export]')) button.onclick=
   try {exportFile(book,engine,button.dataset.export);}
   catch(error) {tell('Error al exportar · '+error.message);}
 };
+const cellMenu=$('cell-menu');
+function showCellMenu(x,y) {
+  const parent=cellMenu.parentElement.getBoundingClientRect();
+  cellMenu.hidden=false;
+  const bounds=cellMenu.getBoundingClientRect();
+  cellMenu.style.left=clamp(x-parent.left,0,Math.max(0,parent.width-bounds.width))+'px';
+  cellMenu.style.top=clamp(y-parent.top,0,Math.max(0,parent.height-bounds.height))+'px';
+  cellMenu.querySelector('button').focus();
+}
+canvas.addEventListener('contextmenu',e=>{
+  e.preventDefault();editor.finish(true,false);
+  const hit=renderer.hit(e);
+  if (!ranges.some(b=>contains(b,hit.r,hit.c))) select(hit,false,false);
+  showCellMenu(e.clientX,e.clientY);
+});
+canvas.addEventListener('keydown',e=>{
+  if (e.key==='ContextMenu'||e.shiftKey&&e.key==='F10') {
+    e.preventDefault();
+    const bounds=canvas.getBoundingClientRect(), cell=renderer.rect(active);
+    showCellMenu(bounds.left+cell.x,bounds.top+cell.y+cell.h);
+  }
+});
+cellMenu.addEventListener('keydown',e=>{
+  if (e.key!=='Escape') return;
+  e.preventDefault();cellMenu.hidden=true;canvas.focus({preventScroll:true});
+});
+cellMenu.addEventListener('click',e=>{
+  const action=e.target.closest('button')?.dataset.cellAction;
+  if (!action) return;
+  cellMenu.hidden=true;
+  ($(action) ?? document.querySelector('[data-tool="'+action+'"]'))?.click();
+});
+document.addEventListener('pointerdown',e=>{
+  if (!cellMenu.hidden&&!cellMenu.contains(e.target)) cellMenu.hidden=true;
+});
+setupWorkbookTools({
+  canvas,sheet,active:()=>active,range:()=>ranges.at(-1),hidden:()=>hidden,
+  importedChart:chart=>resolveChartData(chart,sheet(),book,(id,a)=>engine.value(id,a)),
+  finish:()=>editor.finish(true,false),focus:()=>canvas.focus({preventScroll:true}),
+  value:a=>engine.value(book.active,a),apply,
+  go:p=>{
+    if (hidden.has(p.r)) return false;
+    select(p,false,false);renderer.ensure(p);return true;
+  },
+  change:(key,value)=>{
+    const target=sheet(),previous=target[key];
+    const set=next=>{target[key]=next;};
+    history.run({execute:()=>set(value),undo:()=>set(previous)});
+  }
+});
 activate(book.active);
 persist();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(error=>console.warn('PWA',error));

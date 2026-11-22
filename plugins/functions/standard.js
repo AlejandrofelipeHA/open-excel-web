@@ -6,8 +6,14 @@ function* flatten(args) {
     else yield arg;
   }
 }
+function* populated(args) {
+  for (const arg of args) {
+    if (arg instanceof RangeValue) yield* arg.populated?arg.populated():arg;
+    else yield arg;
+  }
+}
 function* numeric(args) {
-  for (const v of flatten(args)) if (typeof v === 'number') yield v;
+  for (const v of populated(args)) if (typeof v==='number') yield v;
 }
 const reduce = (values, fn, initial) => {
   let state = initial;
@@ -43,7 +49,7 @@ export const definitions = [
   ['MAX','MAX',extreme(Math.max)],
   ['MIN','MIN',extreme(Math.min)],
   ['COUNT','CONTAR',count],
-  ['COUNTA','CONTARA',(...args)=>reduce(flatten(args),(n,v)=>n+Number(v != null),0)],
+  ['COUNTA','CONTARA',(...args)=>reduce(populated(args),(n,v)=>n+Number(v != null),0)],
   ['CONCAT','CONCATENAR',(...args)=>reduce(flatten(args),(a,v)=>a+String(v ?? ''),'')],
   ['ROUND','REDONDEAR',(x,d=0)=>{const p=10**Math.trunc(number(d)), n=number(x); return Math.sign(n)*Math.round(Math.abs(n)*p+Number.EPSILON)/p;}],
   ['VLOOKUP','BUSCARV',lookup],
