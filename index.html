@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#137653">
+  <meta name="description" content="Luma, hoja de cálculo local de código abierto.">
+  <title>Luma · Hojas de cálculo</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./assets/icon-192.png">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./assets/xlsx.full.min.js"></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="mast">
+    <div class="brand"><img src="./assets/icon-192.png" alt=""><span>Luma <small>Hojas de cálculo</small></span></div>
+    <span class="document">Libro de trabajo</span>
+    <div class="mast-actions"><span id="save-status" role="status">Abriendo libro…</span><button id="theme" title="Cambiar tema" aria-label="Cambiar tema">◐</button></div>
+  </header>
+  <main>
+    <nav class="menu" aria-label="Herramientas del libro">
+      <button id="toggle" aria-controls="ribbon" aria-expanded="true">Inicio <span aria-hidden="true">⌄</span></button>
+      <div class="files">
+        <button id="import">Importar</button>
+        <button data-export="csv">CSV</button>
+        <button class="export" data-export="xlsx">Exportar XLSX</button>
+      </div>
+    </nav>
+    <div class="ribbon" id="ribbon" role="toolbar" aria-label="Edición y formato">
+      <div class="group">
+        <button id="undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
+        <button id="redo" title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
+      </div>
+      <div class="group">
+        <button id="copy" title="Copiar (Ctrl+C)">Copiar</button>
+        <button id="cut" title="Cortar (Ctrl+X)">Cortar</button>
+        <button id="paste" title="Pegar (Ctrl+V)">Pegar</button>
+      </div>
+      <div class="group">
+        <button id="bold" title="Negrita (Ctrl+B)" aria-label="Negrita" aria-pressed="false"><strong>N</strong></button>
+        <button id="italic" title="Cursiva" aria-label="Cursiva" aria-pressed="false"><i>C</i></button>
+        <button class="swatch" id="fg" title="Color de texto" aria-label="Color de texto">A</button>
+        <button class="swatch" id="bg" title="Color de relleno" aria-label="Color de relleno">▧</button>
+      </div>
+      <div class="group">
+        <select id="align" aria-label="Alineación">
+          <option value="">Alineación</option><option value="left">Izquierda</option>
+          <option value="center">Centro</option><option value="right">Derecha</option>
+        </select>
+        <select id="format" aria-label="Formato numérico">
+          <option value="">General</option><option value="currency">Moneda (USD)</option>
+          <option value="percent">Porcentaje</option><option value="decimal">Decimal</option><option value="date">Fecha</option>
+        </select>
+      </div>
+      <div class="group">
+        <button id="range-mode" aria-pressed="false" title="Arrastrar para seleccionar con el dedo">Rango</button>
+        <button id="clear" title="Borrar contenido">Borrar</button>
+      </div>
+    </div>
+    <div id="palette" class="palette" hidden></div>
+    <div class="formula">
+      <output id="active-cell" aria-label="Selección">A1</output>
+      <label id="fx-label" for="fx">ƒx</label>
+      <div id="fx" role="textbox" aria-labelledby="fx-label fx-caption" contenteditable="plaintext-only" spellcheck="false" inputmode="text"></div>
+      <span id="fx-caption" class="sr-only">Barra de fórmulas</span>
+      <div class="suggestions" id="suggestions" aria-label="Sugerencias de funciones" hidden></div>
+    </div>
+    <section id="grid" aria-label="Hoja de cálculo">
+      <div class="scroll" aria-hidden="true"><div class="space"></div></div>
+      <canvas tabindex="0" aria-label="Cuadrícula. Usa las flechas para navegar, y F2 para editar." aria-describedby="grid-status"></canvas>
+      <input class="editor" aria-label="Editar celda" autocomplete="off" autocapitalize="off" spellcheck="false" hidden>
+    </section>
+    <footer>
+      <div class="tabs" id="tabs" aria-label="Hojas"></div>
+      <div class="status"><span id="grid-status" aria-live="polite">A1</span><span>12.000 filas · 1.024 columnas</span></div>
+    </footer>
+  </main>
+</body>
+</html>
