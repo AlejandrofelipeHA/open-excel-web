@@ -6,7 +6,7 @@ const descendants=(node,name)=>Array.from(node?.getElementsByTagNameNS('*',name)
 const str=(node,attr)=>node?.getAttribute(attr) ?? '';
 const id=(node,attr)=>Number(str(node,attr));
 const enabled=(node,attr)=>/^(1|true)$/i.test(str(node,attr));
-const rgb=s=>/^(?:[a-f\d]{2})?[a-f\d]{6}$/i.test(s)?'#'+s.slice(-6).toLowerCase():undefined;
+const rgb=s=>/^#?(?:[a-f\d]{2})?[a-f\d]{6}$/i.test(s)?'#'+s.slice(-6).toLowerCase():undefined;
 const parse=text=>{
   if (!text || /<!DOCTYPE/i.test(text)) return null;
   const doc=new DOMParser().parseFromString(text,'application/xml');
